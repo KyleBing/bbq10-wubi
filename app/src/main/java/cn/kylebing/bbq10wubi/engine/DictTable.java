@@ -10,6 +10,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 
@@ -20,7 +21,7 @@ import cn.kylebing.bbq10wubi.data.UserDictWriter;
 
 /** 极点五笔码表：主词库 + 扩展 + 用户词；z 反查用拼音表。 */
 public final class DictTable {
-    private static final int MAX_CAND = 120;
+    private static final int MAX_CAND = 180;
 
     private final CodeIndex wubi = new CodeIndex();
     private final CodeIndex pinyin = new CodeIndex();
@@ -29,12 +30,14 @@ public final class DictTable {
     private int userCount;
     private int pinyinCount;
     private int seq;
+    private final HashMap<String, String> textToWubi = new HashMap<String, String>();
 
     public synchronized void loadAll(Context context) throws Exception {
         wubi.clear();
         pinyin.clear();
         mainCount = extraCount = userCount = pinyinCount = 0;
         seq = 0;
+        textToWubi.clear();
         RimeFiles.ensureUserDir(context);
         loadAssetOrFile(context, "wubi86_jidian.dict.yaml", DictEntry.SRC_MAIN, wubi);
         reloadOverlay(context);
@@ -104,6 +107,7 @@ public final class DictTable {
             DictEntry e = parseLine(line, source, seq++);
             if (e == null) continue;
             index.add(e);
+            if (source != DictEntry.SRC_PINYIN) rememberWubi(e);
             n++;
         }
         return n;
@@ -118,7 +122,7 @@ public final class DictTable {
         }
         if (parts.length < 2) return null;
         String text = parts[0];
-        String code = parts[1].replace("\r", "").toLowerCase();
+        String code = parts[1].replace("\r", "").replace(" ", "").replace("'", "").toLowerCase();
         if (code.length() == 0) return null;
         int weight = 0;
         String note = "";
@@ -181,7 +185,23 @@ public final class DictTable {
     }
 
     public synchronized List<DictEntry> lookupPinyin(String code) {
-        return merge(Collections.<DictEntry>emptyList(), pinyin.lookup(code));
+        if (code == null) return Collections.emptyList();
+        String py = code.replace(" ", "").replace("'", "").toLowerCase();
+        return merge(Collections.<DictEntry>emptyList(), pinyin.lookup(py));
+    }
+
+    public synchronized String wubiCodeOf(String text) {
+        if (text == null) return "";
+        String code = textToWubi.get(text);
+        return code == null ? "" : code;
+    }
+
+    private void rememberWubi(DictEntry e) {
+        if (e == null || e.text.length() == 0 || e.code.length() == 0) return;
+        String prev = textToWubi.get(e.text);
+        if (prev == null || e.code.length() > prev.length()) {
+            textToWubi.put(e.text, e.code);
+        }
     }
 
     private static List<DictEntry> merge(List<DictEntry> a, List<DictEntry> b) {
@@ -209,7 +229,9 @@ public final class DictTable {
         userCount = 0;
         for (UserDictEntry e : doc.allEntries()) {
             int w = e.weight == null ? 0 : e.weight.intValue();
-            next.add(new DictEntry(e.text, e.code.toLowerCase(), w, e.note, DictEntry.SRC_USER, seq++));
+            DictEntry de = new DictEntry(e.text, e.code.toLowerCase(), w, e.note, DictEntry.SRC_USER, seq++);
+            next.add(de);
+            rememberWubi(de);
             userCount++;
         }
         File hamster = RimeFiles.hamsterDict(context);

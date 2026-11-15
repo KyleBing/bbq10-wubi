@@ -111,6 +111,19 @@ public final class WubiSession {
         return false;
     }
 
+    public void resetPage() {
+        page = 0;
+    }
+
+    public boolean reverseLookup() {
+        return code.length() > 1 && (code.charAt(0) == 'z' || code.charAt(0) == 'Z');
+    }
+
+    public String reversePinyin() {
+        if (!reverseLookup()) return "";
+        return code.substring(1).replace("'", "").replace(" ", "");
+    }
+
     public String selectIndex(Context c, int indexOnPage) {
         List<Candidate> pageItems = pageItems();
         int idx = indexOnPage;
@@ -188,9 +201,18 @@ public final class WubiSession {
             hits = table.lookupWubi(code);
         }
         boolean comments = Prefs.showComment(c);
+        boolean reverse = reverseLookup();
         for (DictEntry e : hits) {
             if (specialCount > 0 && e.text.equals(lastCommit) && isSoloZ(code)) continue;
-            String note = comments ? (e.note.length() > 0 ? e.note : e.code) : "";
+            String note;
+            if (reverse) {
+                String wb = table.wubiCodeOf(e.text);
+                note = wb.length() > 0 ? wb : e.code;
+            } else if (comments) {
+                note = e.note.length() > 0 ? e.note : e.code;
+            } else {
+                note = "";
+            }
             list.add(new Candidate(e.text, note, false));
         }
         all = list;

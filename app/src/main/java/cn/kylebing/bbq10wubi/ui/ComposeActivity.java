@@ -14,7 +14,9 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
+import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -36,6 +38,11 @@ public class ComposeActivity extends Activity implements WubiEditText.Listener {
     private TextView langBadge;
     private TextView statusText;
     private LinearLayout candRow;
+    private LinearLayout candGrid;
+    private HorizontalScrollView candScroll;
+    private ScrollView candExpandScroll;
+    private Button btnExpand;
+    private boolean candExpanded;
     private WubiApp app;
     private WubiSession session;
     private boolean english;
@@ -58,6 +65,18 @@ public class ComposeActivity extends Activity implements WubiEditText.Listener {
         langBadge = (TextView) findViewById(R.id.langBadge);
         statusText = (TextView) findViewById(R.id.statusText);
         candRow = (LinearLayout) findViewById(R.id.candRow);
+        candGrid = (LinearLayout) findViewById(R.id.candGrid);
+        candScroll = (HorizontalScrollView) findViewById(R.id.candScroll);
+        candExpandScroll = (ScrollView) findViewById(R.id.candExpandScroll);
+        btnExpand = (Button) findViewById(R.id.btnExpand);
+        btnExpand.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                candExpanded = !candExpanded;
+                if (candExpanded) session.resetPage();
+                refreshBar();
+            }
+        });
         if (Prefs.p(this).getInt("input.lang.reset", 0) < 2) {
             Prefs.setEnglishMode(this, false);
             Prefs.p(this).edit().putInt("input.lang.reset", 2).apply();
@@ -255,18 +274,23 @@ public class ComposeActivity extends Activity implements WubiEditText.Listener {
         }
         if (session.composing()) {
             if (ch >= '1' && ch <= '9') {
-                commitOrIgnore(session.selectIndex(this, ch - '1'));
+                if (candExpanded) commitOrIgnore(session.selectAbsolute(ch - '1'));
+                else commitOrIgnore(session.selectIndex(this, ch - '1'));
                 refreshBar();
                 return true;
             }
             if (ch == ',' || ch == '-') {
-                session.pagePrev();
-                refreshBar();
+                if (!candExpanded) {
+                    session.pagePrev();
+                    refreshBar();
+                }
                 return true;
             }
             if (ch == '.' || ch == '=') {
-                session.pageNext();
-                refreshBar();
+                if (!candExpanded) {
+                    session.pageNext();
+                    refreshBar();
+                }
                 return true;
             }
             if ((ch >= 'A' && ch <= 'Z') && shift) {
@@ -284,6 +308,10 @@ public class ComposeActivity extends Activity implements WubiEditText.Listener {
                 }
                 String auto = session.typeLetter(this, ch);
                 if (auto != null) insert(auto);
+                refreshBar();
+                return true;
+            }
+            if (ch == '\'' && (session.reverseLookup() || WubiSession.isSoloZ(session.code()))) {
                 refreshBar();
                 return true;
             }
@@ -516,18 +544,45 @@ public class ComposeActivity extends Activity implements WubiEditText.Listener {
     private void refreshBar() {
         langBadge.setText(english ? "En" : "中");
         if (!punct.isEmpty()) {
+            candExpanded = false;
             preeditText.setText("标点");
-            renderCandidates(punctToCands(punct), 0, 1);
+            btnExpand.setVisibility(View.GONE);
+            renderCandidates(punctToCands(punct), false);
             return;
         }
         if (session.composing()) {
+            int total = session.allCandidates().size();
             int pages = session.pageCount();
-            String page = pages > 1 ? (" · " + (session.pageIndex() + 1) + "/" + pages) : "";
-            preeditText.setText(session.code() + page);
-            renderCandidates(session.pageItems(), session.pageIndex() * WubiSession.PAGE_SIZE, pages);
+            String label;
+            if (session.reverseLookup()) {
+                label = "[拼音] " + session.reversePinyin();
+            } else if (WubiSession.isSoloZ(session.code())) {
+                label = "[拼音]";
+            } else {
+                label = session.code();
+            }
+            if (!candExpanded && pages > 1) {
+                label = label + " · " + (session.pageIndex() + 1) + "/" + pages;
+            } else if (total > 0) {
+                label = label + " · " + total;
+            }
+            preeditText.setText(label);
+            boolean canExpand = total > 9;
+            btnExpand.setVisibility(canExpand ? View.VISIBLE : View.GONE);
+            if (!canExpand) candExpanded = false;
+            btnExpand.setText(candExpanded ? "收起" : "展开");
+            if (candExpanded) {
+                renderCandidates(session.allCandidates(), true);
+            } else {
+                renderCandidates(session.pageItems(), false);
+            }
         } else {
             preeditText.setText(english ? "英文直出  点「En」切中文" : "空格选1  数字选词  点「中」切英文");
+            btnExpand.setVisibility(View.GONE);
             candRow.removeAllViews();
+            candGrid.removeAllViews();
+            candScroll.setVisibility(View.VISIBLE);
+            candExpandScroll.setVisibility(View.GONE);
         }
     }
 
@@ -537,45 +592,95 @@ public class ComposeActivity extends Activity implements WubiEditText.Listener {
         return list;
     }
 
-    private void renderCandidates(List<Candidate> items, final int absOffset, int pages) {
+    private void renderCandidates(List<Candidate> items, boolean expanded) {
         candRow.removeAllViews();
+        candGrid.removeAllViews();
+        candScroll.setVisibility(expanded ? View.GONE : View.VISIBLE);
+        candExpandScroll.setVisibility(expanded ? View.VISIBLE : View.GONE);
+        if (!expanded) {
+            for (int i = 0; i < items.size(); i++) {
+                candRow.addView(candidateButton(items.get(i), i, false));
+            }
+            if (session.pageCount() > 1) {
+                TextView hint = new TextView(this);
+                hint.setText("  ,/. 翻页");
+                hint.setTextColor(0xFF9A9A9A);
+                hint.setGravity(Gravity.CENTER_VERTICAL);
+                candRow.addView(hint);
+            }
+            return;
+        }
+        int cols = 4;
         for (int i = 0; i < items.size(); i++) {
-            final int index = i;
-            Candidate cand = items.get(i);
-            Button btn = new Button(this);
-            btn.setBackgroundResource(R.drawable.cand_item);
-            String label = (i + 1) + " " + cand.text;
-            if (cand.comment.length() > 0) label = label + " " + cand.comment;
-            btn.setText(label);
-            btn.setTextColor(0xFFFFFFFF);
-            btn.setTextSize(15);
-            btn.setPadding(12, 8, 12, 8);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+            if (items.get(i).text.length() > 4) {
+                cols = 2;
+                break;
+            }
+        }
+        LinearLayout row = null;
+        for (int i = 0; i < items.size(); i++) {
+            if (i % cols == 0) {
+                row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setLayoutParams(new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT));
+                candGrid.addView(row);
+            }
+            row.addView(candidateButton(items.get(i), i, true));
+        }
+        int leftover = items.size() % cols;
+        if (row != null && leftover != 0) {
+            for (int i = leftover; i < cols; i++) {
+                View spacer = new View(this);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0,
+                        LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+                lp.leftMargin = 4;
+                lp.rightMargin = 4;
+                spacer.setLayoutParams(lp);
+                row.addView(spacer);
+            }
+        }
+    }
+
+    private Button candidateButton(Candidate cand, final int index, boolean expanded) {
+        Button btn = new Button(this);
+        btn.setBackgroundResource(R.drawable.cand_item);
+        String num = (index + 1) <= 9 ? String.valueOf(index + 1) + " " : "";
+        String label = num + cand.text;
+        if (cand.comment.length() > 0) label = label + " " + cand.comment;
+        btn.setText(label);
+        btn.setTextColor(0xFFFFFFFF);
+        btn.setTextSize(expanded ? 14 : 15);
+        btn.setPadding(8, 6, 8, 6);
+        btn.setSingleLine(true);
+        LinearLayout.LayoutParams lp;
+        if (expanded) {
+            lp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+        } else {
+            lp = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT);
-            lp.leftMargin = 4;
-            lp.rightMargin = 4;
-            btn.setLayoutParams(lp);
-            btn.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    if (!punct.isEmpty()) {
-                        if (index < punct.size()) commitPunct(punct.get(index), false);
-                    } else {
-                        commitOrIgnore(session.selectIndex(ComposeActivity.this, index));
-                    }
-                    refreshBar();
+        }
+        lp.leftMargin = 4;
+        lp.rightMargin = 4;
+        lp.topMargin = expanded ? 4 : 0;
+        lp.bottomMargin = expanded ? 4 : 0;
+        btn.setLayoutParams(lp);
+        btn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (!punct.isEmpty()) {
+                    if (index < punct.size()) commitPunct(punct.get(index), false);
+                } else if (candExpanded) {
+                    commitOrIgnore(session.selectAbsolute(index));
+                } else {
+                    commitOrIgnore(session.selectIndex(ComposeActivity.this, index));
                 }
-            });
-            candRow.addView(btn);
-        }
-        if (pages > 1) {
-            TextView hint = new TextView(this);
-            hint.setText("  ,/. 翻页");
-            hint.setTextColor(0xFF9A9A9A);
-            hint.setGravity(Gravity.CENTER_VERTICAL);
-            candRow.addView(hint);
-        }
+                refreshBar();
+            }
+        });
+        return btn;
     }
 
     private void copyAll() {

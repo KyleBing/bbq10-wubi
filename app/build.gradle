@@ -1,0 +1,99 @@
+plugins {
+    id 'com.android.application'
+}
+
+def bcRelocatedJar = file("$buildDir/relocated/bouncycastle.jar")
+
+configurations {
+    bouncycastleRaw
+    jarjarTool
+}
+
+android {
+    namespace 'cn.kylebing.bbq10wubi'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "cn.kylebing.bbq10wubi"
+        minSdk 18
+        targetSdk 18
+        versionCode 4
+        versionName "1.0.0.4"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    lint {
+        abortOnError false
+    }
+
+    packaging {
+        resources {
+            excludes += [
+                    'META-INF/NOTICE',
+                    'META-INF/LICENSE',
+                    'META-INF/NOTICE.md',
+                    'META-INF/LICENSE.md',
+                    'META-INF/INDEX.LIST'
+            ]
+        }
+    }
+
+    androidResources {
+        ignoreAssetsPattern '!.svn:!.git:.*:!CVS:!thumbs.db:!picasa.ini:!*.scc:*~'
+    }
+}
+
+dependencies {
+    bouncycastleRaw 'org.bouncycastle:bcprov-jdk15to18:1.78.1'
+    bouncycastleRaw 'org.bouncycastle:bcutil-jdk15to18:1.78.1'
+    bouncycastleRaw 'org.bouncycastle:bctls-jdk15to18:1.78.1'
+    jarjarTool 'org.pantsbuild:jarjar:1.7.2'
+    implementation files(bcRelocatedJar)
+}
+
+tasks.register('relocateBouncyCastle') {
+    inputs.files(configurations.bouncycastleRaw)
+    outputs.file(bcRelocatedJar)
+    doLast {
+        def relocatedDir = bcRelocatedJar.parentFile
+        relocatedDir.mkdirs()
+        def merged = new File(relocatedDir, 'bc-merged.jar')
+        ant.jar(destfile: merged, duplicate: 'preserve') {
+            configurations.bouncycastleRaw.each { File jarFile ->
+                zipfileset(src: jarFile, excludes: 'META-INF/MANIFEST.MF,META-INF/INDEX.LIST,META-INF/*.SF,META-INF/*.DSA,META-INF/*.RSA,META-INF/services/**')
+            }
+        }
+        def rules = new File(relocatedDir, 'jarjar-rules.txt')
+        rules.text = 'rule org.bouncycastle.** cn.kylebing.bbq10wubi.internal.bc.@1\n'
+        javaexec {
+            classpath = configurations.jarjarTool
+            main = 'org.pantsbuild.jarjar.Main'
+            args 'process', rules.absolutePath, merged.absolutePath, bcRelocatedJar.absolutePath
+        }
+    }
+}
+
+tasks.configureEach { task ->
+    if (task.name.startsWith('compile') && task.name.contains('JavaWithJavac')) {
+        task.dependsOn 'relocateBouncyCastle'
+    }
+}
+
+tasks.matching { it.name == 'preBuild' }.configureEach {
+    dependsOn 'relocateBouncyCastle'
+}

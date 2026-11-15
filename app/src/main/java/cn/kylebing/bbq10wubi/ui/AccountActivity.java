@@ -29,6 +29,8 @@ public class AccountActivity extends Activity {
     private EditText password;
     private TextView status;
     private TextView log;
+    private View loginPanel;
+    private View btnLogout;
     private final Handler main = new Handler(Looper.getMainLooper());
 
     @Override
@@ -39,6 +41,9 @@ public class AccountActivity extends Activity {
         password = (EditText) findViewById(R.id.password);
         status = (TextView) findViewById(R.id.accountStatus);
         log = (TextView) findViewById(R.id.syncLog);
+        loginPanel = findViewById(R.id.loginPanel);
+        btnLogout = findViewById(R.id.btnLogout);
+        HomeNav.bind(this);
         refreshStatus();
 
         WubiCloudUserInfo u = WubiCloudConfig.userInfo(this);
@@ -245,8 +250,12 @@ public class AccountActivity extends Activity {
 
     private void refreshStatus() {
         WubiCloudUserInfo u = WubiCloudConfig.userInfo(this);
-        if (u == null) status.setText("未登录");
+        boolean logged = u != null;
+        if (!logged) status.setText("未登录");
         else status.setText("已登录 " + u.email + (u.nickname.length() == 0 ? "" : "（" + u.nickname + "）"));
+        loginPanel.setVisibility(logged ? View.GONE : View.VISIBLE);
+        btnLogout.setVisibility(logged ? View.VISIBLE : View.GONE);
+        if (!logged) password.setText("");
     }
 
     private void toast(String msg) {

@@ -17,8 +17,8 @@ android {
         applicationId "cn.kylebing.bbq10wubi"
         minSdk 18
         targetSdk 18
-        versionCode 4
-        versionName "1.0.0.4"
+        versionCode 5
+        versionName "1.0.0.5"
     }
 
     buildTypes {

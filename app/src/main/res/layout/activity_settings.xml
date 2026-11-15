@@ -81,6 +81,8 @@
             android:text="用法"
             android:textColor="@color/text" />
 
+        <include layout="@layout/include_home_bar" />
+
         <TextView
             android:id="@+id/versionText"
             android:layout_width="match_parent"

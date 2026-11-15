@@ -9,7 +9,8 @@ import java.io.FileInputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 
 import cn.kylebing.bbq10wubi.data.RimeFiles;
@@ -27,11 +28,13 @@ public final class DictTable {
     private int extraCount;
     private int userCount;
     private int pinyinCount;
+    private int seq;
 
     public synchronized void loadAll(Context context) throws Exception {
         wubi.clear();
         pinyin.clear();
         mainCount = extraCount = userCount = pinyinCount = 0;
+        seq = 0;
         RimeFiles.ensureUserDir(context);
         loadAssetOrFile(context, "wubi86_jidian.dict.yaml", DictEntry.SRC_MAIN, wubi);
         reloadOverlay(context);
@@ -98,7 +101,7 @@ public final class DictTable {
             }
             line = line.trim();
             if (line.length() == 0 || line.startsWith("#") || line.startsWith("##")) continue;
-            DictEntry e = parseLine(line, source);
+            DictEntry e = parseLine(line, source, seq++);
             if (e == null) continue;
             index.add(e);
             n++;
@@ -106,7 +109,7 @@ public final class DictTable {
         return n;
     }
 
-    static DictEntry parseLine(String line, int source) {
+    static DictEntry parseLine(String line, int source, int ord) {
         String[] parts;
         if (line.indexOf('\t') >= 0) {
             parts = splitTab(line);
@@ -140,7 +143,7 @@ public final class DictTable {
             text = parts[1];
             code = tmp.toLowerCase();
         }
-        return new DictEntry(text, code, weight, note, source);
+        return new DictEntry(text, code, weight, note, source, ord);
     }
 
     private static String[] splitTab(String line) {
@@ -178,30 +181,25 @@ public final class DictTable {
     }
 
     public synchronized List<DictEntry> lookupPinyin(String code) {
-        return merge(null, pinyin.lookup(code));
+        return merge(Collections.<DictEntry>emptyList(), pinyin.lookup(code));
     }
 
     private static List<DictEntry> merge(List<DictEntry> a, List<DictEntry> b) {
-        LinkedHashMap<String, DictEntry> map = new LinkedHashMap<String, DictEntry>();
-        addAll(map, a);
-        addAll(map, b);
-        ArrayList<DictEntry> out = new ArrayList<DictEntry>(Math.min(MAX_CAND, map.size()));
-        for (DictEntry e : map.values()) {
-            out.add(e);
-            if (out.size() >= MAX_CAND) break;
+        if (a == null) a = Collections.emptyList();
+        if (b == null) b = Collections.emptyList();
+        ArrayList<DictEntry> out = new ArrayList<DictEntry>(Math.min(MAX_CAND, a.size() + b.size()));
+        HashSet<String> seen = new HashSet<String>();
+        int i = 0;
+        int j = 0;
+        while (out.size() < MAX_CAND && (i < a.size() || j < b.size())) {
+            DictEntry pick;
+            if (i >= a.size()) pick = b.get(j++);
+            else if (j >= b.size()) pick = a.get(i++);
+            else if (DictEntry.compareRime(a.get(i), b.get(j)) <= 0) pick = a.get(i++);
+            else pick = b.get(j++);
+            if (seen.add(pick.text)) out.add(pick);
         }
         return out;
-    }
-
-    private static void addAll(LinkedHashMap<String, DictEntry> map, List<DictEntry> list) {
-        if (list == null) return;
-        for (DictEntry e : list) {
-            String key = e.text;
-            DictEntry old = map.get(key);
-            if (old == null || e.rank() > old.rank()) {
-                map.put(key, e);
-            }
-        }
     }
 
     public synchronized void reloadUserFromDocument(Context context) {
@@ -211,8 +209,12 @@ public final class DictTable {
         userCount = 0;
         for (UserDictEntry e : doc.allEntries()) {
             int w = e.weight == null ? 0 : e.weight.intValue();
-            next.add(new DictEntry(e.text, e.code.toLowerCase(), w, e.note, DictEntry.SRC_USER));
+            next.add(new DictEntry(e.text, e.code.toLowerCase(), w, e.note, DictEntry.SRC_USER, seq++));
             userCount++;
+        }
+        File hamster = RimeFiles.hamsterDict(context);
+        if (hamster.isFile()) {
+            loadFile(hamster, DictEntry.SRC_USER, next);
         }
         overlay = next;
         overlay.sort();

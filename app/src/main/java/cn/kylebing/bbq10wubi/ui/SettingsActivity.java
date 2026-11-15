@@ -19,6 +19,7 @@ public class SettingsActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
+        HomeNav.bind(this);
 
         CheckBox four = (CheckBox) findViewById(R.id.chkFourUnique);
         CheckBox empty = (CheckBox) findViewById(R.id.chkEmptyClear);

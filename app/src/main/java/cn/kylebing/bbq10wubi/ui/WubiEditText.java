@@ -20,10 +20,12 @@ public class WubiEditText extends EditText {
         boolean onWubiDelete();
     }
 
-    /** commitText 可能重复送达的字符键（不含回删/空格/回车）。 */
+    /** commitText 可能与 KeyEvent 成对到达的字符键（不含回删）。 */
     static boolean isCommitCharKey(int code) {
         return (code >= KeyEvent.KEYCODE_A && code <= KeyEvent.KEYCODE_Z)
                 || (code >= KeyEvent.KEYCODE_0 && code <= KeyEvent.KEYCODE_9)
+                || code == KeyEvent.KEYCODE_SPACE
+                || code == KeyEvent.KEYCODE_ENTER
                 || code == KeyEvent.KEYCODE_PERIOD
                 || code == KeyEvent.KEYCODE_COMMA
                 || code == KeyEvent.KEYCODE_MINUS

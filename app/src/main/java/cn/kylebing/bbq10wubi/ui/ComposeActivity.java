@@ -198,10 +198,12 @@ public class ComposeActivity extends Activity implements WubiEditText.Listener {
         }
         if (keyCode == KeyEvent.KEYCODE_ENTER) {
             handleReturn();
+            ateFromCommit = true;
             return true;
         }
         if (keyCode == KeyEvent.KEYCODE_SPACE) {
             handleSpace();
+            ateFromCommit = true;
             return true;
         }
         char ch = resolveChar(event);
@@ -240,6 +242,10 @@ public class ComposeActivity extends Activity implements WubiEditText.Listener {
     }
 
     private boolean processChar(char ch, boolean shift) {
+        if (ch == ' ') {
+            handleSpace();
+            return true;
+        }
         if (english) {
             insert("" + ch);
             return true;
@@ -520,7 +526,7 @@ public class ComposeActivity extends Activity implements WubiEditText.Listener {
             preeditText.setText(session.code() + page);
             renderCandidates(session.pageItems(), session.pageIndex() * WubiSession.PAGE_SIZE, pages);
         } else {
-            preeditText.setText(english ? "英文直出  点左上角「En」切中文" : "空格选1  数字选词  点「中」切英文");
+            preeditText.setText(english ? "英文直出  点「En」切中文" : "空格选1  数字选词  点「中」切英文");
             candRow.removeAllViews();
         }
     }

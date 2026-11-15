@@ -18,6 +18,7 @@ public class HelpActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_help);
+        HomeNav.bind(this);
         TextView body = (TextView) findViewById(R.id.helpBody);
         float chipSp = TypedValue.applyDimension(
                 TypedValue.COMPLEX_UNIT_SP, 12f, getResources().getDisplayMetrics());

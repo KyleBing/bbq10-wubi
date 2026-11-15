@@ -7,15 +7,10 @@ import java.util.HashMap;
 import java.util.List;
 
 final class CodeIndex {
-    private static final Comparator<DictEntry> BY_RANK = new Comparator<DictEntry>() {
+    private static final Comparator<DictEntry> BY_RIME = new Comparator<DictEntry>() {
         @Override
         public int compare(DictEntry a, DictEntry b) {
-            int c = b.rank() - a.rank();
-            if (c != 0) return c;
-            int la = a.code.length();
-            int lb = b.code.length();
-            if (la != lb) return la - lb;
-            return 0;
+            return DictEntry.compareRime(a, b);
         }
     };
 
@@ -41,7 +36,7 @@ final class CodeIndex {
     void sort() {
         if (sorted) return;
         for (ArrayList<DictEntry> list : prefix.values()) {
-            Collections.sort(list, BY_RANK);
+            Collections.sort(list, BY_RIME);
         }
         sorted = true;
     }
